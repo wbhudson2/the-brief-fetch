@@ -58,17 +58,19 @@ MIT.
 
 The brief's ledger lives in the same Supabase project. Two tables grow without bound and
 had pushed the database past the free tier's 500 MB: `signals` (the intake pool, ~1,400
-articles a day) and `memory_embeddings` (one vector per pool article). Nothing reads a
-pool article older than about a day except semantic recall.
+articles a day) and `memory_embeddings` (one vector per pool article). The curated memory
+(storylines, observations, dossiers, insights, errata, calls) is small and is never pruned.
 
-`supabase/migrations/20261107213000_signals_retention_halfvec.sql` keeps the database
-small without touching the curated memory (storylines, observations, dossiers, insights,
-errata, calls):
+`supabase/migrations/20261107213000_signals_retention_halfvec.sql` keeps the database small:
 
-- `signals_retention()` deletes signals older than 14 days and their embeddings; a pg_cron
-  job (`signals-retention`) runs it daily at 09:40 UTC.
+- `signals_retention()`, run daily by a pg_cron job (`signals-retention`, 09:40 UTC), prunes
+  the pool in tiers. A signal an edition used or that any observation, dossier event, dossier
+  fact or erratum cites is kept whole for good. Every other signal loses its vector and body
+  after 21 days (nothing reads them later; the Curator's own pool finds are within 14 days)
+  and its row after 35 days (the regime reader looks back 30).
 - embeddings are stored as `halfvec(1024)` (16-bit floats), which cuts the HNSW index and
   TOAST to under half; `recall_by_vector()` keeps its `vector(1024)` argument.
 
-Change the window with
-`select cron.schedule('signals-retention', '40 9 * * *', $$select public.signals_retention(interval '21 days')$$);`.
+Change the windows with
+`select cron.schedule('signals-retention', '40 9 * * *', $$select public.signals_retention(interval '45 days', interval '28 days')$$);`
+and keep the 21-day literal in `memory_embedding_queue` in step with the second argument.
