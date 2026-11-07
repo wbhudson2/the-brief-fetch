@@ -53,3 +53,22 @@ this function.
 ## License
 
 MIT.
+
+## Database housekeeping
+
+The brief's ledger lives in the same Supabase project. Two tables grow without bound and
+had pushed the database past the free tier's 500 MB: `signals` (the intake pool, ~1,400
+articles a day) and `memory_embeddings` (one vector per pool article). Nothing reads a
+pool article older than about a day except semantic recall.
+
+`supabase/migrations/20261107213000_signals_retention_halfvec.sql` keeps the database
+small without touching the curated memory (storylines, observations, dossiers, insights,
+errata, calls):
+
+- `signals_retention()` deletes signals older than 14 days and their embeddings; a pg_cron
+  job (`signals-retention`) runs it daily at 09:40 UTC.
+- embeddings are stored as `halfvec(1024)` (16-bit floats), which cuts the HNSW index and
+  TOAST to under half; `recall_by_vector()` keeps its `vector(1024)` argument.
+
+Change the window with
+`select cron.schedule('signals-retention', '40 9 * * *', $$select public.signals_retention(interval '21 days')$$);`.
